@@ -9,10 +9,10 @@ int main() {
 
   q = getPoints();
   int isConvex = quadrilateralIsConvex(q);
-  
+
   if (isConvex) {
     printf("Quadrilatero convexo.\n");
-    printf("Área: %lf\n", quadrilateralArea(q));
+    printf("Área: %.2lf\n", quadrilateralArea(q));
   } else {
     printf("Quadrilatero não convexo.\n");
   }
