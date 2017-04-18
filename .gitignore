@@ -1,7 +1,5 @@
 .vagrant/
-Trabalhos-2-2016/
 .DS_Store
-playgorund/
 *.pdf
 exec
 **/exec
