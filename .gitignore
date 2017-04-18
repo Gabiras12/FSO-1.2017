@@ -3,3 +3,4 @@
 *.pdf
 exec
 **/exec
+**/output.txt
