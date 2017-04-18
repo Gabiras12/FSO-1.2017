@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/select.h>
 #include <unistd.h>
 #include <time.h>
@@ -15,10 +16,11 @@ void endProgramAfterTimeout(pid_t parent, pid_t passive, pid_t active);
 void passiveProcessRoutine(int pipe[]);
 void activeProcessRoutine(int pipe[]);
 void handleMessageFromChildren(int activePipe[], int passivePipe[]);
-void writePipeToFile(int pipe[], clock_t start);
+void writePipeToFile(int pipe[], struct timeval start);
 void writeToPipe(int pipe[], const char * message, int number, double times[]);
 void cleanOutPutFile();
-void formatTimestamp(clock_t start, clock_t end, double times[]);
+void formatTimestamp(struct timeval start, struct timeval end, double times[]);
+
 
 
 int main(int argc, const char * argv[]) {
@@ -70,7 +72,8 @@ void handleMessageFromChildren(int activePipe[], int passivePipe[]) {
     close(activePipe[1]);
 
     // get intial time for parent process
-    clock_t start = clock();
+    struct timeval start;
+    gettimeofday(&start, NULL);
 
     //Continious reading from pipe
     while (1) {
@@ -86,9 +89,9 @@ void activeProcessRoutine(int pipe[]) {
     printf("Entre com as menssagens: \n");
 
     //Get current local time to compute timestamp
-    clock_t start, end;
+    struct timeval start, end;
     double times[2];
-    start = clock(); // get intial time
+    gettimeofday(&start, NULL); // get intial time
 
     int i = 1;
     while (1) {
@@ -98,10 +101,9 @@ void activeProcessRoutine(int pipe[]) {
         strcat(userMessage, message);
         strcat(userMessage, ">");
 
-        end = clock(); // get end of each messagem
-        // compute timestamp from start time
-        formatTimestamp(start, end, times);
+        gettimeofday(&end, NULL); // get end of each messagem
 
+        formatTimestamp(start, end, times);
         writeToPipe(pipe, userMessage, i, times);
         i++;
     }
@@ -110,15 +112,14 @@ void activeProcessRoutine(int pipe[]) {
 // Passive process. Send message to pipe every random seconds.
 void passiveProcessRoutine(int pipe[]) {
     //Get current local time to compute timestamp
-    clock_t start, end;
+    struct timeval start, end;
     double times[2];
-    start = clock(); // get intial time
+    gettimeofday(&start, NULL); // get intial time
 
     int i = 1;
     while (1) {
-        unsigned int retTime = time(0) + rand()%3;   // Get finishing time.
-        while (time(0) < retTime);                   // Loop until it arrives.
-        end = clock(); // get end of each messagem
+        sleep(rand()%3);
+        gettimeofday(&end, NULL); // get end of each messagem
 
         // compute timestamp from start time
         formatTimestamp(start, end, times);
@@ -161,7 +162,7 @@ void writeToPipe(int pipe[], const char * message, int number, double times[]) {
 }
 
 //Get output from pipe and writes to target file
-void writePipeToFile(int pipe[], clock_t start) {
+void writePipeToFile(int pipe[], struct timeval start) {
     //Prepare output file
     FILE * outputFile = fopen("output.txt", "a");
 
@@ -198,7 +199,8 @@ void writePipeToFile(int pipe[], clock_t start) {
         char buffer[1024];
         double times[2];
         if ((fgets (buffer, sizeof (buffer), stream) != NULL)) {
-            clock_t end = clock();
+            struct timeval end;
+            gettimeofday(&end, NULL); // get end of each messagem
             formatTimestamp(start, end, times);
             fprintf(outputFile, "%.0lf:%06.3lf: %s", times[0], times[1], buffer);
         }
@@ -208,10 +210,10 @@ void writePipeToFile(int pipe[], clock_t start) {
     fclose(outputFile);
 }
 
-void formatTimestamp(clock_t start, clock_t end, double times[]){
+void formatTimestamp(struct timeval start, struct timeval end, double times[]){
   //times[0] = minutes
   //times[1] = seconds.miliseconds
-  double cpuTimeUsed =  ((double) (end - start)) / (CLOCKS_PER_SEC);
+  double cpuTimeUsed = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
 
   times[0] = (int) cpuTimeUsed/60;
   times[1] = (cpuTimeUsed - times[0] * 60);
