@@ -16,9 +16,10 @@ void passiveProcessRoutine(int pipe[]);
 void activeProcessRoutine(int pipe[]);
 void handleMessageFromChildren(int activePipe[], int passivePipe[]);
 void writePipeToFile(int pipe[], clock_t start);
-void writeToPipe(int pipe[], const char * message, int number, double timestamp);
+void writeToPipe(int pipe[], const char * message, int number, double times[]);
 void cleanOutPutFile();
-double timestampInMiliseconds (clock_t start, clock_t end);
+void formatTimestamp(clock_t start, clock_t end, double times[]);
+
 
 int main(int argc, const char * argv[]) {
     //clean previous output file
@@ -86,7 +87,7 @@ void activeProcessRoutine(int pipe[]) {
 
     //Get current local time to compute timestamp
     clock_t start, end;
-    double cpuTimeUsed;
+    double times[2];
     start = clock(); // get intial time
 
     int i = 1;
@@ -99,9 +100,9 @@ void activeProcessRoutine(int pipe[]) {
 
         end = clock(); // get end of each messagem
         // compute timestamp from start time
-        cpuTimeUsed = timestampInMiliseconds(start, end);
+        formatTimestamp(start, end, times);
 
-        writeToPipe(pipe, userMessage, i, cpuTimeUsed);
+        writeToPipe(pipe, userMessage, i, times);
         i++;
     }
 }
@@ -110,18 +111,19 @@ void activeProcessRoutine(int pipe[]) {
 void passiveProcessRoutine(int pipe[]) {
     //Get current local time to compute timestamp
     clock_t start, end;
-    double cpuTimeUsed;
+    double times[2];
     start = clock(); // get intial time
 
     int i = 1;
     while (1) {
-        sleep(rand()%3); // wait to write to pipe
+        unsigned int retTime = time(0) + rand()%3;   // Get finishing time.
+        while (time(0) < retTime);                   // Loop until it arrives.
         end = clock(); // get end of each messagem
 
         // compute timestamp from start time
-        cpuTimeUsed = timestampInMiliseconds(start, end);
+        formatTimestamp(start, end, times);
 
-        writeToPipe(pipe, "do filho dorminhoco", i, cpuTimeUsed);
+        writeToPipe(pipe, "do filho dorminhoco", i, times);
         i++;
     }
 }
@@ -145,7 +147,7 @@ void endProgramAfterTimeout(pid_t parent, pid_t passive, pid_t active) {
 }
 
 //Write message to input end to target pipe
-void writeToPipe(int pipe[], const char * message, int number, double timestamp) {
+void writeToPipe(int pipe[], const char * message, int number, double times[]) {
     //Create file stream for comunication
     FILE* stream;
 
@@ -154,7 +156,7 @@ void writeToPipe(int pipe[], const char * message, int number, double timestamp)
 
     //Open write end of pipe and point to file stream
     stream = fdopen (pipe[1], "w");
-    fprintf (stream, "%lf Mensagem %d %s\n", timestamp, number, message);
+    fprintf (stream, "%.0lf:%06.3lf: Mensagem %d %s\n", times[0] , times[1], number, message);
     fflush (stream);
 }
 
@@ -194,10 +196,11 @@ void writePipeToFile(int pipe[], clock_t start) {
 
         //Ready file and print to output
         char buffer[1024];
+        double times[2];
         if ((fgets (buffer, sizeof (buffer), stream) != NULL)) {
             clock_t end = clock();
-            double cpuTimeUsed = timestampInMiliseconds(start, end);
-            fprintf(outputFile, "%lf %s", cpuTimeUsed, buffer);
+            formatTimestamp(start, end, times);
+            fprintf(outputFile, "%.0lf:%06.3lf: %s", times[0], times[1], buffer);
         }
     }
 
@@ -205,6 +208,11 @@ void writePipeToFile(int pipe[], clock_t start) {
     fclose(outputFile);
 }
 
-double timestampInMiliseconds(clock_t start, clock_t end) {
-    return ((double) (end - start)) / (CLOCKS_PER_SEC/1000);
+void formatTimestamp(clock_t start, clock_t end, double times[]){
+  //times[0] = minutes
+  //times[1] = seconds.miliseconds
+  double cpuTimeUsed =  ((double) (end - start)) / (CLOCKS_PER_SEC);
+
+  times[0] = (int) cpuTimeUsed/60;
+  times[1] = (cpuTimeUsed - times[0] * 60);
 }
