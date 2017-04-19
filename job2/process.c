@@ -96,7 +96,8 @@ void activeProcessRoutine(int pipe[]) {
 
     int i = 1;
     while (1) {
-        scanf("%s", message);
+        scanf("%[^\n]s", message);
+        setbuf(stdin, NULL);
 
         char userMessage[80] = "do usuario: <";
         strcat(userMessage, message);
