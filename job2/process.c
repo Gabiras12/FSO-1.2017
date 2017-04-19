@@ -25,6 +25,7 @@ void formatTimestamp(struct timeval start, struct timeval end, double times[]);
 
 int main(int argc, const char * argv[]) {
     //clean previous output file
+    srand((unsigned)time(NULL));
     cleanOutPutFile();
 
     //Create pipes for comunication
@@ -86,7 +87,7 @@ void handleMessageFromChildren(int activePipe[], int passivePipe[]) {
 void activeProcessRoutine(int pipe[]) {
     char message[50];
 
-    printf("Entre com as menssagens: \n");
+    printf("Entre com as mensagens: \n");
 
     //Get current local time to compute timestamp
     struct timeval start, end;
@@ -157,7 +158,7 @@ void writeToPipe(int pipe[], const char * message, int number, double times[]) {
 
     //Open write end of pipe and point to file stream
     stream = fdopen (pipe[1], "w");
-    fprintf (stream, "%.0lf:%06.3lf: Mensagem %d %s\n", times[0] , times[1], number, message);
+    fprintf (stream, "%.0lf:%09lf: Mensagem %d %s\n", times[0] , times[1], number, message);
     fflush (stream);
 }
 
@@ -175,6 +176,7 @@ void writePipeToFile(int pipe[], struct timeval start) {
     // start non-breaking reading from pipe
     fd_set set;
     struct timeval timeout;
+    struct timeval end;
 
     /* Initialize the file descriptor set. */
     FD_ZERO(&set);
@@ -199,10 +201,9 @@ void writePipeToFile(int pipe[], struct timeval start) {
         char buffer[1024];
         double times[2];
         if ((fgets (buffer, sizeof (buffer), stream) != NULL)) {
-            struct timeval end;
             gettimeofday(&end, NULL); // get end of each messagem
             formatTimestamp(start, end, times);
-            fprintf(outputFile, "%.0lf:%06.3lf: %s", times[0], times[1], buffer);
+            fprintf(outputFile, "%.0lf:%09lf: %s", times[0], times[1], buffer);
         }
     }
 
