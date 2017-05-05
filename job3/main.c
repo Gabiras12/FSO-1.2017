@@ -5,9 +5,14 @@
 
 #define MAX_BUFFER_SIZE 50
 
-pthread_mutex_t the_mutex;
-pthread_cond_t condc, condp;
-int current_buffer_size;
+typedef struct {
+  int buf[MAX_BUFFER_SIZE]; // the buffer
+  size_t len; // number of items in the buffer
+  pthread_mutex_t mutex; // needed to add/remove data from the buffer
+  pthread_cond_t can_produce; // signaled when items are removed
+  pthread_cond_t can_consume; // signaled when items are added
+} buffer_t;
+
 
 void write_to_file(char * message){
 
@@ -24,38 +29,53 @@ void write_to_file(char * message){
 }
 
 void * write_to_buffer(void * args){
-  int * buffer = (int *) args;
+  buffer_t *buffer = (buffer_t*) args;
   char msg[100];
 
-  while(current_buffer_size < MAX_BUFFER_SIZE){
-    pthread_mutex_lock(&the_mutex);	/* protect buffer */
+  while(1){
+    pthread_mutex_lock(&buffer->mutex);	/* protect buffer */
 
-    buffer[current_buffer_size] = rand();
-    snprintf(msg, 100 , "[producao]: Numero gerado: %d", buffer[current_buffer_size]);
+    if(buffer->len == MAX_BUFFER_SIZE) {
+      // wait until some elements are consumed
+      pthread_cond_wait(&buffer->can_produce, &buffer->mutex);
+    }
+
+    buffer->buf[buffer->len] = rand();
+    snprintf(msg, 100 , "[producao]: Numero gerado: %d", buffer->buf[buffer->len]);
     write_to_file(msg);
-    current_buffer_size++;
-    
-    pthread_cond_signal(&condc); /* wake up consumer */
-    pthread_mutex_unlock(&the_mutex); /* release the buffer */
+
+    buffer->len ++;
+
+    // signal the fact that new items may be consumed
+    pthread_cond_signal(&buffer->can_consume);
+    pthread_mutex_unlock(&buffer->mutex);
+
     usleep(100000); //sleep for 100 ms
   }
 }
 
 
 void * read_to_buffer(void * args){
-  int * buffer = (int*) args;
+  buffer_t *buffer = (buffer_t*) args;
   char msg[100];
 
-  for(int i=0; i<MAX_BUFFER_SIZE ; i++){
-    pthread_mutex_lock(&the_mutex); /* protect buffer */
+  while(1){
+    pthread_mutex_lock(&buffer->mutex); /* protect buffer */
 
-    while (current_buffer_size <= 0) /* If there is nothing in the buffer then wait */
-      pthread_cond_wait(&condc, &the_mutex);
+    if(buffer->len == 0) {
+      // wait for new items to be appended to the buffer
+      pthread_cond_wait(&buffer->can_consume, &buffer->mutex);
+    }
 
-    snprintf(msg, 100, " [consumo]: Numero lido: %d" , buffer[i]);
-    current_buffer_size --;
+    buffer->len --;
+    
+    snprintf(msg, 100, " [consumo]: Numero lido: %d" , buffer->buf[buffer->len]);
     write_to_file(msg);
-    pthread_mutex_unlock(&the_mutex); /* release the buffer */
+
+    // signal the fact that new items may be produced
+    pthread_cond_signal(&buffer->can_produce);
+    pthread_mutex_unlock(&buffer->mutex);
+
     usleep(150000); //sleep for 150 ms
   }
 }
@@ -64,18 +84,20 @@ void * read_to_buffer(void * args){
 int main(int argc, const char * argv[]){
 
   srand((unsigned)time(NULL));
-  int * buffer = (int*) malloc(sizeof(int) * 50);
+
+  buffer_t buffer = {
+    .len = 0,
+    .mutex = PTHREAD_MUTEX_INITIALIZER,
+    .can_produce = PTHREAD_COND_INITIALIZER,
+    .can_consume = PTHREAD_COND_INITIALIZER
+  };
 
   pthread_t producer, consumer1, consumer2;
   // Initialize the mutex and condition variables
 
-  pthread_mutex_init(&the_mutex, NULL);
-  pthread_cond_init(&condp, NULL);		/* Initialize producer condition variable */
-  pthread_cond_init(&condc, NULL);		/* Initialize consumer condition variable */
+  pthread_create(&producer, NULL, write_to_buffer, (void*)&buffer);
 
-  pthread_create(&producer, NULL, write_to_buffer, buffer);
-
-  pthread_create(&consumer1, NULL, read_to_buffer, buffer);
+  pthread_create(&consumer1, NULL, read_to_buffer, (void*)&buffer);
   //pthread_create(&consumer2, NULL, read_to_buffer, buffer);
 
   pthread_join(producer, NULL);
@@ -83,13 +105,5 @@ int main(int argc, const char * argv[]){
 
   //pthread_join(consumer2, NULL);
 
-  pthread_mutex_destroy(&the_mutex); /* Free up the_mutex */
-  pthread_cond_destroy(&condc); /* Free up consumer condition variable */
-  pthread_cond_destroy(&condp); /* Free up producer condition variable */
-
-
-  free(buffer);
-
-  printf("buffer: %d", current_buffer_size);
   return 0;
 }
