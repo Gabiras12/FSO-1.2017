@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <signal.h>
 
 #define MAX_BUFFER_SIZE 50
+#define MAX_RAND_NUMBER 5000
 
 typedef struct {
   int buf[MAX_BUFFER_SIZE]; // the buffer
@@ -22,6 +24,7 @@ int check_max_number(int max_number, int * buffer);
 int check_min_number(int min_number, int * buffer);
 void * write_to_buffer(void * args);
 void * read_from_buffer(void * args);
+void signalHandler(int sig);
 
 int main(int argc, const char **argv){
 
@@ -32,6 +35,9 @@ int main(int argc, const char **argv){
   } else {
     logFileName = argv[1];
   }
+
+  //Set signal handler to catch ctrl-c
+  signal(SIGINT, signalHandler);
 
   //Set seed for random numbers
   srand((unsigned)time(NULL));
@@ -62,6 +68,7 @@ int main(int argc, const char **argv){
   return 0;
 }
 
+// write message to log file
 void write_to_file(char * message){
 
   FILE * output_file = fopen(logFileName, "a");
@@ -76,6 +83,7 @@ void write_to_file(char * message){
   fclose(output_file);
 }
 
+// check the biggest number in the buffer
 int check_max_number(int max_number, int * buffer){
 
     for(int i=0; i<MAX_BUFFER_SIZE; i++){
@@ -86,6 +94,7 @@ int check_max_number(int max_number, int * buffer){
     return max_number;
 }
 
+// check the smallest number in the buffer
 int check_min_number(int min_number, int * buffer){
 
     for(int i=0; i<MAX_BUFFER_SIZE; i++){
@@ -96,19 +105,25 @@ int check_min_number(int min_number, int * buffer){
     return min_number;
 }
 
+// right random number to buffer
 void * write_to_buffer(void * args){
+  // cast args back to buffer_t type
   buffer_t *buffer = (buffer_t*) args;
   char msg[100];
 
   while(1){
+    // Lock the mutex. pthread_mutex_lock works like this:
+    // if the lock is available, the function locks it and returns immediately
+    // if not available wait until lock set available and block the thread
     pthread_mutex_lock(&buffer->mutex);	/* protect buffer */
 
+    // If len == MAX_BUFFER_SIZE buffer is full so it's not possible to write to it
     if(buffer->len == MAX_BUFFER_SIZE) {
       // wait until some elements are consumed
       pthread_cond_wait(&buffer->can_produce, &buffer->mutex);
     }
 
-    buffer->buf[buffer->len] = rand()%30;
+    buffer->buf[buffer->len] = rand()%MAX_RAND_NUMBER;
     snprintf(msg, 100 , "[producao]: Numero gerado: %d", buffer->buf[buffer->len]);
     write_to_file(msg);
 
@@ -157,4 +172,11 @@ void * read_from_buffer(void * args){
 
     usleep(150000); //sleep for 150 ms
   }
+}
+
+// Handler signal in the process
+void signalHandler(int sig) {
+  signal(sig, SIG_IGN);
+  printf("\nTermino solicitado. Aguardando threads...\n");
+  exit(0);
 }
