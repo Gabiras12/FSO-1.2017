@@ -7,21 +7,22 @@
 #define MAX_BUFFER_SIZE 50
 #define MAX_RAND_NUMBER 5000
 
+int max_number = 0;
+int min_number = 0;
+int buffer_size = 0;
+
 typedef struct {
   int buf[MAX_BUFFER_SIZE]; // the buffer
-  size_t len; // number of items in the buffer
   pthread_mutex_t mutex; // needed to add/remove data from the buffer
   pthread_cond_t can_produce; // signaled when items are removed
   pthread_cond_t can_consume; // signaled when items are added
-  int max_number; // larger number in buffer
-  int min_number; // smaller number in buffer
 } buffer_t;
 
 char * logFileName;
 
 void write_to_file(char * message);
-int check_max_number(int max_number, int * buffer);
-int check_min_number(int min_number, int * buffer);
+int check_max_number(int * buffer);
+int check_min_number(int * buffer);
 void * write_to_buffer(void * args);
 void * read_from_buffer(void * args);
 void signalHandler(int sig);
@@ -44,12 +45,9 @@ int main(int argc, const char **argv){
 
   // Create buffer struct and initialize mutex and condition variables
   buffer_t buffer = {
-    .len = 0,
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .can_produce = PTHREAD_COND_INITIALIZER,
     .can_consume = PTHREAD_COND_INITIALIZER,
-    .max_number = 0,
-    .min_number = 0
   };
 
   // Create threads to write and read
@@ -84,7 +82,7 @@ void write_to_file(char * message){
 }
 
 // check the biggest number in the buffer
-int check_max_number(int max_number, int * buffer){
+int check_max_number(int * buffer){
 
     for(int i=0; i<MAX_BUFFER_SIZE; i++){
       if(buffer[i] > max_number){
@@ -95,7 +93,7 @@ int check_max_number(int max_number, int * buffer){
 }
 
 // check the smallest number in the buffer
-int check_min_number(int min_number, int * buffer){
+int check_min_number(int * buffer){
 
     for(int i=0; i<MAX_BUFFER_SIZE; i++){
       if(buffer[i] < min_number){
@@ -117,17 +115,17 @@ void * write_to_buffer(void * args){
     // if not available wait until lock set available and block the thread
     pthread_mutex_lock(&buffer->mutex);	/* protect buffer */
 
-    // If len == MAX_BUFFER_SIZE buffer is full so it's not possible to write to it
-    if(buffer->len == MAX_BUFFER_SIZE) {
+    // If buffer_size == MAX_BUFFER_SIZE buffer is full so it's not possible to write to it
+    if(buffer_size == MAX_BUFFER_SIZE) {
       // wait until some elements are consumed
       pthread_cond_wait(&buffer->can_produce, &buffer->mutex);
     }
 
-    buffer->buf[buffer->len] = rand()%MAX_RAND_NUMBER;
-    snprintf(msg, 100 , "[producao]: Numero gerado: %d", buffer->buf[buffer->len]);
+    buffer->buf[buffer_size] = rand()%MAX_RAND_NUMBER;
+    snprintf(msg, 100 , "[producao]: Numero gerado: %d", buffer->buf[buffer_size]);
     write_to_file(msg);
 
-    buffer->len ++;
+    buffer_size ++;
 
     // signal the fact that new items may be consumed
     pthread_cond_signal(&buffer->can_consume);
@@ -151,19 +149,19 @@ void * read_from_buffer(void * args){
     pthread_mutex_lock(&buffer->mutex);
 
     // if len == 0 thre is no data in the buffer
-    while(buffer->len == 0) {
+    while(buffer_size == 0) {
       // wait for new items to be appended to the buffer
       pthread_cond_wait(&buffer->can_consume, &buffer->mutex);
     }
 
     // remove item from buffer
-    buffer->len --;
-    buffer->min_number = check_min_number(buffer->min_number, buffer->buf);
-    buffer->max_number = check_max_number(buffer->max_number, buffer->buf);
+    buffer_size --;
+    min_number = check_min_number(buffer->buf);
+    max_number = check_max_number(buffer->buf);
 
     //printf("MAX NUMBER: %d\n", buffer->max_number);
     //printf("MIN NUMBER: %d\n", buffer->min_number);
-    snprintf(msg, 100, " [consumo]: Numero lido: %d" , buffer->buf[buffer->len]);
+    snprintf(msg, 100, " [consumo]: Numero lido: %d" , buffer->buf[buffer_size]);
     write_to_file(msg);
 
     // signal the fact that new items may be produced
@@ -178,5 +176,10 @@ void * read_from_buffer(void * args){
 void signalHandler(int sig) {
   signal(sig, SIG_IGN);
   printf("\nTermino solicitado. Aguardando threads...\n");
+  printf("[aviso]: Maior numero gerado: %d\n", max_number);
+  printf("[aviso]: Menor numero gerado: %d\n", min_number);
+  printf("[aviso]: Maior ocupacao de buffer: %d\n", buffer_size);
+  printf("[aviso]: Aplicacao encerrada.\n");
+
   exit(0);
 }
