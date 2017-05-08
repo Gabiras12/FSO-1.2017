@@ -9,8 +9,8 @@
 #define PRODUCER_SLEEP_TIME 100
 #define CONSUMER_SLEEP_TIME 150
 
-int max_number = 0;
-int min_number = 0;
+int max_number = -MAX_RAND_NUMBER;
+int min_number = MAX_RAND_NUMBER;
 int max_buffer_utilization = 0;
 int buffer_size = 0;
 
@@ -100,7 +100,7 @@ int check_max_number(int * buffer){
 int check_min_number(int * buffer){
 
     for(int i=0; i<MAX_BUFFER_SIZE; i++){
-      if(buffer[i] < min_number){
+      if(buffer[i] < min_number && buffer[i] != 0){
         min_number = buffer[i];
       }
     }
