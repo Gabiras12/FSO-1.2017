@@ -6,9 +6,12 @@
 
 #define MAX_BUFFER_SIZE 50
 #define MAX_RAND_NUMBER 5000
+#define PRODUCER_SLEEP_TIME 100
+#define CONSUMER_SLEEP_TIME 150
 
 int max_number = 0;
 int min_number = 0;
+int max_buffer_utilization = 0;
 int buffer_size = 0;
 
 typedef struct {
@@ -26,6 +29,7 @@ int check_min_number(int * buffer);
 void * write_to_buffer(void * args);
 void * read_from_buffer(void * args);
 void signalHandler(int sig);
+void printEndingInfos();
 
 int main(int argc, const char **argv){
 
@@ -121,17 +125,27 @@ void * write_to_buffer(void * args){
       pthread_cond_wait(&buffer->can_produce, &buffer->mutex);
     }
 
-    buffer->buf[buffer_size] = rand()%MAX_RAND_NUMBER;
+    // Write random number to buffer
+    printf("buffer_size: %d\n", buffer_size);
+    buffer->buf[buffer_size] = rand()%(2*MAX_RAND_NUMBER) - MAX_RAND_NUMBER;
+
+    //Write to log file
     snprintf(msg, 100 , "[producao]: Numero gerado: %d", buffer->buf[buffer_size]);
     write_to_file(msg);
 
+    // Incremente next available possition in the buffer
     buffer_size ++;
+
+    // Update max_buffer_utilization if new used possition
+    if (buffer_size > max_buffer_utilization) {
+      max_buffer_utilization = buffer_size;
+    }
 
     // signal the fact that new items may be consumed
     pthread_cond_signal(&buffer->can_consume);
     pthread_mutex_unlock(&buffer->mutex);
 
-    usleep(100000); //sleep for 100 ms
+    usleep(PRODUCER_SLEEP_TIME*1000); //sleep for 100 ms
   }
 }
 
@@ -159,27 +173,45 @@ void * read_from_buffer(void * args){
     min_number = check_min_number(buffer->buf);
     max_number = check_max_number(buffer->buf);
 
+
+
     //printf("MAX NUMBER: %d\n", buffer->max_number);
     //printf("MIN NUMBER: %d\n", buffer->min_number);
-    snprintf(msg, 100, " [consumo]: Numero lido: %d" , buffer->buf[buffer_size]);
+    snprintf(msg, 100, "[consumo]: Numero lido: %d" , buffer->buf[buffer_size]);
     write_to_file(msg);
 
     // signal the fact that new items may be produced
     pthread_cond_signal(&buffer->can_produce);
     pthread_mutex_unlock(&buffer->mutex);
 
-    usleep(150000); //sleep for 150 ms
+    usleep(CONSUMER_SLEEP_TIME*1000); //sleep for 150 ms
   }
 }
 
 // Handler signal in the process
 void signalHandler(int sig) {
   signal(sig, SIG_IGN);
-  printf("\nTermino solicitado. Aguardando threads...\n");
+  printEndingInfos();
+  exit(0);
+}
+
+void printEndingInfos() {
+  char msg[100];
+
+  snprintf(msg, 100, "[aviso]: Termino solicitado. Aguardando threads...");
+  write_to_file(msg);
+  snprintf(msg, 100, "[aviso]: Maior numero gerado: %d", max_number);
+  write_to_file(msg);
+  snprintf(msg, 100, "[aviso]: Menor numero gerado: %d", min_number);
+  write_to_file(msg);
+  snprintf(msg, 100, "[aviso]: Maior ocupacao de buffer: %d", max_buffer_utilization);
+  write_to_file(msg);
+  snprintf(msg, 100, "[aviso]: Aplicacao encerrada.");
+  write_to_file(msg);
+
+  printf("\n[aviso]: Termino solicitado. Aguardando threads...\n");
   printf("[aviso]: Maior numero gerado: %d\n", max_number);
   printf("[aviso]: Menor numero gerado: %d\n", min_number);
-  printf("[aviso]: Maior ocupacao de buffer: %d\n", buffer_size);
+  printf("[aviso]: Maior ocupacao de buffer: %d\n", max_buffer_utilization);
   printf("[aviso]: Aplicacao encerrada.\n");
-
-  exit(0);
 }
