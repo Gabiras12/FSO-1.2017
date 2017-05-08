@@ -23,6 +23,12 @@ typedef struct {
 
 char * logFileName;
 
+// Threads Ids
+pthread_t producerID, consumer1ID, consumer2ID;
+void * producerStatus;
+void * consumer1Status;
+void * consumer2Status;
+
 void write_to_file(char * message);
 int check_max_number(int * buffer);
 int check_min_number(int * buffer);
@@ -30,6 +36,7 @@ void * write_to_buffer(void * args);
 void * read_from_buffer(void * args);
 void signalHandler(int sig);
 void printEndingInfos();
+void requestThreadsCancelation();
 
 int main(int argc, const char **argv){
 
@@ -55,17 +62,14 @@ int main(int argc, const char **argv){
   };
 
   // Create threads to write and read
-  pthread_t producer, consumer1, consumer2;
-
-  pthread_create(&producer, NULL, write_to_buffer, (void*)&buffer);
-  pthread_create(&consumer1, NULL, read_from_buffer, (void*)&buffer);
-  pthread_create(&consumer2, NULL, read_from_buffer, (void*)&buffer);
-
+  pthread_create(&producerID, NULL, write_to_buffer, (void*)&buffer);
+  pthread_create(&consumer1ID, NULL, read_from_buffer, (void*)&buffer);
+  pthread_create(&consumer2ID, NULL, read_from_buffer, (void*)&buffer);
 
   // Wait threads returns to end program
-  pthread_join(producer, NULL);
-  pthread_join(consumer1, NULL);
-  pthread_join(consumer2, NULL);
+  pthread_join(producerID, &producerStatus);
+  pthread_join(consumer1ID, &consumer1Status);
+  pthread_join(consumer2ID, &consumer2Status);
 
   return 0;
 }
@@ -112,6 +116,7 @@ void * write_to_buffer(void * args){
   // cast args back to buffer_t type
   buffer_t *buffer = (buffer_t*) args;
   char msg[100];
+  int old_cancel_state;
 
   while(1){
     // Lock the mutex. pthread_mutex_lock works like this:
@@ -119,11 +124,15 @@ void * write_to_buffer(void * args){
     // if not available wait until lock set available and block the thread
     pthread_mutex_lock(&buffer->mutex);	/* protect buffer */
 
+
     // If buffer_size == MAX_BUFFER_SIZE buffer is full so it's not possible to write to it
     if(buffer_size == MAX_BUFFER_SIZE) {
       // wait until some elements are consumed
       pthread_cond_wait(&buffer->can_produce, &buffer->mutex);
     }
+
+    // Block cancel thread after this point is beening execulted
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
 
     // Write random number to buffer
     buffer->buf[buffer_size] = rand()%(2*MAX_RAND_NUMBER) - MAX_RAND_NUMBER;
@@ -140,6 +149,8 @@ void * write_to_buffer(void * args){
       max_buffer_utilization = buffer_size;
     }
 
+    // Release cancel thread after this point is beening execulted
+    pthread_setcancelstate(old_cancel_state, NULL);
     // signal the fact that new items may be consumed
     pthread_cond_signal(&buffer->can_consume);
     pthread_mutex_unlock(&buffer->mutex);
@@ -154,6 +165,7 @@ void * read_from_buffer(void * args){
   // cast args back to buffer_t type
   buffer_t *buffer = (buffer_t*) args;
   char msg[100];
+  int old_cancel_state;
 
   while(1){
     // Lock the mutex. pthread_mutex_lock works like this:
@@ -161,21 +173,29 @@ void * read_from_buffer(void * args){
     // if not available wait until lock set available and block the thread
     pthread_mutex_lock(&buffer->mutex);
 
+
     // if len == 0 thre is no data in the buffer
     while(buffer_size == 0) {
       // wait for new items to be appended to the buffer
       pthread_cond_wait(&buffer->can_consume, &buffer->mutex);
     }
 
+    // Block cancel thread after this point is beening execulted
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
+
     // remove item from buffer
     buffer_size --;
+
+    //check min and max
     min_number = check_min_number(buffer->buf);
     max_number = check_max_number(buffer->buf);
 
-    //printf("MAX NUMBER: %d\n", buffer->max_number);
-    //printf("MIN NUMBER: %d\n", buffer->min_number);
+    //write readed number to file
     snprintf(msg, 100, "[consumo]: Numero lido: %d" , buffer->buf[buffer_size]);
     write_to_file(msg);
+
+    // Release cancel thread after this point is beening execulted
+    pthread_setcancelstate(old_cancel_state, NULL);
 
     // signal the fact that new items may be produced
     pthread_cond_signal(&buffer->can_produce);
@@ -188,15 +208,25 @@ void * read_from_buffer(void * args){
 // Handler signal in the process
 void signalHandler(int sig) {
   signal(sig, SIG_IGN);
+  requestThreadsCancelation();
   printEndingInfos();
   exit(0);
+}
+
+void requestThreadsCancelation() {
+  char msg[100];
+  snprintf(msg, 100, "[aviso]: Termino solicitado. Aguardando threads...");
+  write_to_file(msg);
+  printf("\n[aviso]: Termino solicitado. Aguardando threads...\n");
+
+  pthread_cancel(producerID);
+  pthread_cancel(consumer1ID);
+  pthread_cancel(consumer2ID);
 }
 
 void printEndingInfos() {
   char msg[100];
 
-  snprintf(msg, 100, "[aviso]: Termino solicitado. Aguardando threads...");
-  write_to_file(msg);
   snprintf(msg, 100, "[aviso]: Maior numero gerado: %d", max_number);
   write_to_file(msg);
   snprintf(msg, 100, "[aviso]: Menor numero gerado: %d", min_number);
@@ -206,7 +236,6 @@ void printEndingInfos() {
   snprintf(msg, 100, "[aviso]: Aplicacao encerrada.");
   write_to_file(msg);
 
-  printf("\n[aviso]: Termino solicitado. Aguardando threads...\n");
   printf("[aviso]: Maior numero gerado: %d\n", max_number);
   printf("[aviso]: Menor numero gerado: %d\n", min_number);
   printf("[aviso]: Maior ocupacao de buffer: %d\n", max_buffer_utilization);
