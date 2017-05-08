@@ -126,7 +126,6 @@ void * write_to_buffer(void * args){
     }
 
     // Write random number to buffer
-    printf("buffer_size: %d\n", buffer_size);
     buffer->buf[buffer_size] = rand()%(2*MAX_RAND_NUMBER) - MAX_RAND_NUMBER;
 
     //Write to log file
@@ -172,8 +171,6 @@ void * read_from_buffer(void * args){
     buffer_size --;
     min_number = check_min_number(buffer->buf);
     max_number = check_max_number(buffer->buf);
-
-
 
     //printf("MAX NUMBER: %d\n", buffer->max_number);
     //printf("MIN NUMBER: %d\n", buffer->min_number);
