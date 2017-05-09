@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 
 #define MAX_BUFFER_SIZE 50
 #define MAX_RAND_NUMBER 5000
@@ -20,6 +21,11 @@ typedef struct {
   pthread_cond_t can_produce; // signaled when items are removed
   pthread_cond_t can_consume; // signaled when items are added
 } buffer_t;
+
+typedef struct{
+  char name[1]; // thread name
+  buffer_t * buffer;
+} consumer;
 
 char * logFileName;
 
@@ -61,10 +67,25 @@ int main(int argc, const char **argv){
     .can_consume = PTHREAD_COND_INITIALIZER,
   };
 
+  // Create consumer struct
+  consumer consumer_1 = {
+    .buffer = &buffer
+  };
+
+  // Create consumer struct
+  consumer consumer_2 = {
+    .buffer = &buffer
+  };
+
+  // Identify consumer structs
+  strcpy(consumer_1.name, "a");
+  strcpy(consumer_2.name, "b");
+
+
   // Create threads to write and read
   pthread_create(&producerID, NULL, write_to_buffer, (void*)&buffer);
-  pthread_create(&consumer1ID, NULL, read_from_buffer, (void*)&buffer);
-  pthread_create(&consumer2ID, NULL, read_from_buffer, (void*)&buffer);
+  pthread_create(&consumer1ID, NULL, read_from_buffer, (void*)&consumer_1);
+  pthread_create(&consumer2ID, NULL, read_from_buffer, (void*)&consumer_2);
 
   // Wait threads returns to end program
   pthread_join(producerID, &producerStatus);
@@ -124,7 +145,6 @@ void * write_to_buffer(void * args){
     // if not available wait until lock set available and block the thread
     pthread_mutex_lock(&buffer->mutex);	/* protect buffer */
 
-
     // If buffer_size == MAX_BUFFER_SIZE buffer is full so it's not possible to write to it
     if(buffer_size == MAX_BUFFER_SIZE) {
       // wait until some elements are consumed
@@ -163,7 +183,7 @@ void * write_to_buffer(void * args){
 // Function to read from buffer when lock available and there is data on it
 void * read_from_buffer(void * args){
   // cast args back to buffer_t type
-  buffer_t *buffer = (buffer_t*) args;
+  consumer * consumer = (consumer*) args;
   char msg[100];
   int old_cancel_state;
 
@@ -171,13 +191,13 @@ void * read_from_buffer(void * args){
     // Lock the mutex. pthread_mutex_lock works like this:
     // if the lock is available, the function locks it and returns immediately
     // if not available wait until lock set available and block the thread
-    pthread_mutex_lock(&buffer->mutex);
+    pthread_mutex_lock(&consumer->buffer->mutex);
 
 
     // if len == 0 thre is no data in the buffer
     while(buffer_size == 0) {
       // wait for new items to be appended to the buffer
-      pthread_cond_wait(&buffer->can_consume, &buffer->mutex);
+      pthread_cond_wait(&consumer->buffer->can_consume, &consumer->buffer->mutex);
     }
 
     // Block cancel thread after this point is beening execulted
@@ -187,19 +207,19 @@ void * read_from_buffer(void * args){
     buffer_size --;
 
     //check min and max
-    min_number = check_min_number(buffer->buf);
-    max_number = check_max_number(buffer->buf);
+    min_number = check_min_number(consumer->buffer->buf);
+    max_number = check_max_number(consumer->buffer->buf);
 
     //write readed number to file
-    snprintf(msg, 100, "[consumo]: Numero lido: %d" , buffer->buf[buffer_size]);
+    snprintf(msg, 100, "[consumo %s]: Numero lido: %d" ,consumer->name ,consumer->buffer->buf[buffer_size]);
     write_to_file(msg);
 
     // Release cancel thread after this point is beening execulted
     pthread_setcancelstate(old_cancel_state, NULL);
 
     // signal the fact that new items may be produced
-    pthread_cond_signal(&buffer->can_produce);
-    pthread_mutex_unlock(&buffer->mutex);
+    pthread_cond_signal(&consumer->buffer->can_produce);
+    pthread_mutex_unlock(&consumer->buffer->mutex);
 
     usleep(CONSUMER_SLEEP_TIME*1000); //sleep for 150 ms
   }
