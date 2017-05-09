@@ -25,7 +25,7 @@ typedef struct {
 typedef struct{
   char name[1]; // thread name
   buffer_t * buffer;
-} consumer;
+} consumer_struct;
 
 char * logFileName;
 
@@ -43,6 +43,7 @@ void * read_from_buffer(void * args);
 void signalHandler(int sig);
 void printEndingInfos();
 void requestThreadsCancelation();
+void cleanupHandler(void * args);
 
 int main(int argc, const char **argv){
 
@@ -68,12 +69,12 @@ int main(int argc, const char **argv){
   };
 
   // Create consumer struct
-  consumer consumer_1 = {
+  consumer_struct consumer_1 = {
     .buffer = &buffer
   };
 
   // Create consumer struct
-  consumer consumer_2 = {
+  consumer_struct consumer_2 = {
     .buffer = &buffer
   };
 
@@ -132,6 +133,10 @@ int check_min_number(int * buffer){
     return min_number;
 }
 
+void cleanupHandler(void * args) {
+  
+}
+
 // right random number to buffer
 void * write_to_buffer(void * args){
   // cast args back to buffer_t type
@@ -169,12 +174,13 @@ void * write_to_buffer(void * args){
       max_buffer_utilization = buffer_size;
     }
 
-    // Release cancel thread after this point is beening execulted
-    pthread_setcancelstate(old_cancel_state, NULL);
     // signal the fact that new items may be consumed
     pthread_cond_signal(&buffer->can_consume);
     pthread_mutex_unlock(&buffer->mutex);
 
+    // Release cancel thread after this point is beening execulted
+    pthread_setcancelstate(old_cancel_state, NULL);
+    pthread_testcancel();
     usleep(PRODUCER_SLEEP_TIME*1000); //sleep for 100 ms
   }
 }
@@ -183,7 +189,7 @@ void * write_to_buffer(void * args){
 // Function to read from buffer when lock available and there is data on it
 void * read_from_buffer(void * args){
   // cast args back to buffer_t type
-  consumer * consumer = (consumer*) args;
+  consumer_struct * consumer = (consumer_struct*) args;
   char msg[100];
   int old_cancel_state;
 
@@ -214,13 +220,14 @@ void * read_from_buffer(void * args){
     snprintf(msg, 100, "[consumo %s]: Numero lido: %d" ,consumer->name ,consumer->buffer->buf[buffer_size]);
     write_to_file(msg);
 
-    // Release cancel thread after this point is beening execulted
-    pthread_setcancelstate(old_cancel_state, NULL);
-
     // signal the fact that new items may be produced
     pthread_cond_signal(&consumer->buffer->can_produce);
     pthread_mutex_unlock(&consumer->buffer->mutex);
 
+    // Release cancel thread after this point is beening execulted
+    pthread_setcancelstate(old_cancel_state, NULL);
+
+    pthread_testcancel();
     usleep(CONSUMER_SLEEP_TIME*1000); //sleep for 150 ms
   }
 }
