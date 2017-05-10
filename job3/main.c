@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define MAX_BUFFER_SIZE 50
-#define MAX_RAND_NUMBER 5000
+#define MAX_RAND_NUMBER 100000
 #define PRODUCER_SLEEP_TIME 100
 #define CONSUMER_SLEEP_TIME 150
 
@@ -31,9 +31,6 @@ char * logFileName;
 
 // Threads Ids
 pthread_t producerID, consumer1ID, consumer2ID;
-void * producerStatus;
-void * consumer1Status;
-void * consumer2Status;
 
 void write_to_file(char * message);
 int check_max_number(int * buffer);
@@ -89,52 +86,11 @@ int main(int argc, const char **argv){
   pthread_create(&consumer2ID, NULL, read_from_buffer, (void*)&consumer_2);
 
   // Wait threads returns to end program
-  pthread_join(producerID, &producerStatus);
-  pthread_join(consumer1ID, &consumer1Status);
-  pthread_join(consumer2ID, &consumer2Status);
+  pthread_join(producerID, NULL);
+  pthread_join(consumer1ID, NULL);
+  pthread_join(consumer2ID, NULL);
 
   return 0;
-}
-
-// write message to log file
-void write_to_file(char * message){
-
-  FILE * output_file = fopen(logFileName, "a");
-
-  if (output_file == NULL) {
-    printf("Error opening file!\n");
-    exit(1);
-  }
-
-  fprintf(output_file, "%s\n", message);
-
-  fclose(output_file);
-}
-
-// check the biggest number in the buffer
-int check_max_number(int * buffer){
-
-    for(int i=0; i<MAX_BUFFER_SIZE; i++){
-      if(buffer[i] > max_number){
-        max_number = buffer[i];
-      }
-    }
-    return max_number;
-}
-
-// check the smallest number in the buffer
-int check_min_number(int * buffer){
-
-    for(int i=0; i<MAX_BUFFER_SIZE; i++){
-      if(buffer[i] < min_number && buffer[i] != 0){
-        min_number = buffer[i];
-      }
-    }
-    return min_number;
-}
-
-void cleanupHandler(void * args) {
-
 }
 
 // right random number to buffer
@@ -142,6 +98,9 @@ void * write_to_buffer(void * args){
   // cast args back to buffer_t type
   buffer_t *buffer = (buffer_t*) args;
   char msg[100];
+
+  // setup cleanuphandler for thread
+  pthread_cleanup_push(cleanupHandler, args);
 
   while(1){
     // Lock the mutex. pthread_mutex_lock works like this:
@@ -179,17 +138,25 @@ void * write_to_buffer(void * args){
 
     // Release cancel thread after this point is beening execulted
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+
+    // Check if any cancel signal was sent while cancel was disabled
     pthread_testcancel();
     usleep(PRODUCER_SLEEP_TIME*1000); //sleep for 100 ms
   }
-}
 
+  //Remove cleanup handler from cleanup stack
+  pthread_cleanup_pop(0);
+  return NULL;
+}
 
 // Function to read from buffer when lock available and there is data on it
 void * read_from_buffer(void * args){
   // cast args back to buffer_t type
   consumer_struct * consumer = (consumer_struct*) args;
   char msg[100];
+
+  // setup cleanuphandler for thread
+  pthread_cleanup_push(cleanupHandler, consumer->buffer);
 
   while(1){
     // Lock the mutex. pthread_mutex_lock works like this:
@@ -223,9 +190,14 @@ void * read_from_buffer(void * args){
 
     // // Release cancel thread after this point is beening execulted
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    // Check if any cancel signal was sent while cancel was disabled
     pthread_testcancel();
     usleep(CONSUMER_SLEEP_TIME*1000); //sleep for 150 ms
   }
+
+  //Remove cleanup handler from cleanup stack
+  pthread_cleanup_pop(0);
+  return NULL;
 }
 
 // Handler signal in the process
@@ -263,4 +235,51 @@ void printEndingInfos() {
   printf("[aviso]: Menor numero gerado: %d\n", min_number);
   printf("[aviso]: Maior ocupacao de buffer: %d\n", max_buffer_utilization);
   printf("[aviso]: Aplicacao encerrada.\n");
+}
+
+//cleanupHandler it destroy mutex and cond variables
+void cleanupHandler(void * args) {
+  buffer_t * buffer = (buffer_t*) args;
+
+  pthread_mutex_unlock(&buffer->mutex);
+  pthread_mutex_destroy(&buffer->mutex);
+  pthread_cond_destroy(&buffer->can_produce);
+  pthread_cond_destroy(&buffer->can_consume);
+}
+
+// write message to log file
+void write_to_file(char * message){
+
+  FILE * output_file = fopen(logFileName, "a");
+
+  if (output_file == NULL) {
+    printf("Error opening file!\n");
+    exit(1);
+  }
+
+  fprintf(output_file, "%s\n", message);
+
+  fclose(output_file);
+}
+
+// check the biggest number in the buffer
+int check_max_number(int * buffer){
+
+    for(int i=0; i<MAX_BUFFER_SIZE; i++){
+      if(buffer[i] > max_number){
+        max_number = buffer[i];
+      }
+    }
+    return max_number;
+}
+
+// check the smallest number in the buffer
+int check_min_number(int * buffer){
+
+    for(int i=0; i<MAX_BUFFER_SIZE; i++){
+      if(buffer[i] < min_number && buffer[i] != 0){
+        min_number = buffer[i];
+      }
+    }
+    return min_number;
 }
