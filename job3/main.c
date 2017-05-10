@@ -134,7 +134,7 @@ int check_min_number(int * buffer){
 }
 
 void cleanupHandler(void * args) {
-  
+
 }
 
 // right random number to buffer
@@ -142,7 +142,6 @@ void * write_to_buffer(void * args){
   // cast args back to buffer_t type
   buffer_t *buffer = (buffer_t*) args;
   char msg[100];
-  int old_cancel_state;
 
   while(1){
     // Lock the mutex. pthread_mutex_lock works like this:
@@ -157,7 +156,7 @@ void * write_to_buffer(void * args){
     }
 
     // Block cancel thread after this point is beening execulted
-    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
     // Write random number to buffer
     buffer->buf[buffer_size] = rand()%(2*MAX_RAND_NUMBER) - MAX_RAND_NUMBER;
@@ -179,7 +178,7 @@ void * write_to_buffer(void * args){
     pthread_mutex_unlock(&buffer->mutex);
 
     // Release cancel thread after this point is beening execulted
-    pthread_setcancelstate(old_cancel_state, NULL);
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_testcancel();
     usleep(PRODUCER_SLEEP_TIME*1000); //sleep for 100 ms
   }
@@ -191,14 +190,12 @@ void * read_from_buffer(void * args){
   // cast args back to buffer_t type
   consumer_struct * consumer = (consumer_struct*) args;
   char msg[100];
-  int old_cancel_state;
 
   while(1){
     // Lock the mutex. pthread_mutex_lock works like this:
     // if the lock is available, the function locks it and returns immediately
     // if not available wait until lock set available and block the thread
     pthread_mutex_lock(&consumer->buffer->mutex);
-
 
     // if len == 0 thre is no data in the buffer
     while(buffer_size == 0) {
@@ -207,7 +204,7 @@ void * read_from_buffer(void * args){
     }
 
     // Block cancel thread after this point is beening execulted
-    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
     // remove item from buffer
     buffer_size --;
@@ -224,9 +221,8 @@ void * read_from_buffer(void * args){
     pthread_cond_signal(&consumer->buffer->can_produce);
     pthread_mutex_unlock(&consumer->buffer->mutex);
 
-    // Release cancel thread after this point is beening execulted
-    pthread_setcancelstate(old_cancel_state, NULL);
-
+    // // Release cancel thread after this point is beening execulted
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_testcancel();
     usleep(CONSUMER_SLEEP_TIME*1000); //sleep for 150 ms
   }
