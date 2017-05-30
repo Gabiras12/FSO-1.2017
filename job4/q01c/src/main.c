@@ -24,13 +24,13 @@ int main(int argc, char *argv[]){
     arg = atof(argv[2]);
 
     double (*arc_seno_func)(double seno) = dlsym(lib, "arc_seno");
-    printf("arc_seno (%.2f)\n", (*arc_seno_func)(arg));
+    printf("arc_seno (%.2f) = %.2f\n", arg, (*arc_seno_func)(arg));
   }
   else if(strcmp(argv[1],"-s") == 0) {
     arg = atof(argv[2]);
 
     double (*seno_func)(double angulo) = dlsym(lib, "seno");
-    printf("seno (%.2f)\n", (*seno)(arg));
+    printf("seno (%.2f) = %.2f\n", arg, (*seno)(arg));
   }
   else{
     printf("Argumento inválido\n");
