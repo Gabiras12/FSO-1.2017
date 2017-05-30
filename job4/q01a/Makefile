@@ -1,5 +1,7 @@
 run:
-	gcc -o exec libseno/libseno.c libseno/main.c -std=c99 -lm -I headers
+	gcc -c ../libseno/libseno.c -o build/libseno.o -std=c99
+	ar rcs build/libseno.a build/libseno.o
+	gcc -static src/main.c -L./build -I../libseno -lseno -o build/main.run -lm
 
 clean:
-	rm exec
+	rm build/*
